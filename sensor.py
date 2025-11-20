@@ -1,6 +1,7 @@
 """
 Integration Home Assistant pour EDF Tempo
 Une seule entité sensor avec tous les états et attributs
+Version robuste avec gestion des données instables
 """
 import logging
 from datetime import datetime, timedelta
@@ -51,11 +52,12 @@ class TempoDataCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name="Tempo",
-            update_interval=timedelta(hours=24),  # Mise à jour quotidienne par défaut
+            update_interval=None,  # Pas de mise à jour automatique, uniquement programmée
         )
         self.tempo_data = {}
+        self._cached_data = {}  # Cache pour garder les dernières données valides
         self._last_period = None
-        self._last_update_attempt = None
+        self._last_api_call = None
         self._data_fetched_today = False
         self._schedule_updates()
 
@@ -84,19 +86,44 @@ class TempoDataCoordinator(DataUpdateCoordinator):
         return target_date.strftime("%Y-%m-%d")
 
     def get_color_code(self, date: str) -> int:
-        """Retourne le code couleur pour une date donnée."""
+        """Retourne le code couleur pour une date donnée (avec cache)."""
+        # Essaie d'abord les données actuelles
         color = self.tempo_data.get(date, "")
-        return COLORS.get(color, {}).get("code", 0)
+        if color and color in COLORS:
+            return COLORS[color]["code"]
+        
+        # Sinon, utilise le cache
+        color = self._cached_data.get(date, "")
+        if color and color in COLORS:
+            _LOGGER.debug(f"Utilisation du cache pour {date}: {color}")
+            return COLORS[color]["code"]
+        
+        return 0
 
     def get_color_name(self, date: str) -> str:
-        """Retourne le nom de la couleur pour une date donnée."""
+        """Retourne le nom de la couleur pour une date donnée (avec cache)."""
         color = self.tempo_data.get(date, "")
-        return COLORS.get(color, {}).get("name", "Inconnu")
+        if color and color in COLORS:
+            return COLORS[color]["name"]
+        
+        # Utilise le cache si disponible
+        color = self._cached_data.get(date, "")
+        if color and color in COLORS:
+            return COLORS[color]["name"]
+        
+        return "Inconnu"
 
     def get_color_name_en(self, date: str) -> str:
-        """Retourne le nom anglais de la couleur pour une date donnée."""
+        """Retourne le nom anglais de la couleur pour une date donnée (avec cache)."""
         color = self.tempo_data.get(date, "")
-        return COLORS.get(color, {}).get("name_en", "unknown")
+        if color and color in COLORS:
+            return COLORS[color]["name_en"]
+        
+        color = self._cached_data.get(date, "")
+        if color and color in COLORS:
+            return COLORS[color]["name_en"]
+        
+        return "unknown"
 
     def is_hc_time(self) -> bool:
         """Vérifie si on est en heures creuses (22h-6h)."""
@@ -164,7 +191,7 @@ class TempoDataCoordinator(DataUpdateCoordinator):
         if self._last_period != current_period:
             self._last_period = current_period
         
-        # Force la mise à jour des entités
+        # Force la mise à jour des entités (sans appel API)
         self.async_set_updated_data(self.tempo_data)
 
     async def _trigger_api_refresh(self, _now=None):
@@ -173,12 +200,12 @@ class TempoDataCoordinator(DataUpdateCoordinator):
         today_date = now.strftime("%Y-%m-%d")
         
         # Évite les appels multiples le même jour
-        if self._last_update_attempt == today_date and self._data_fetched_today:
+        if self._last_api_call == today_date and self._data_fetched_today:
             _LOGGER.info("Données J+1 déjà récupérées aujourd'hui, skip")
             return
         
         _LOGGER.info("7h - Récupération API pour couleur J+1")
-        self._last_update_attempt = today_date
+        self._last_api_call = today_date
         await self.async_refresh()
 
     async def _trigger_api_retry(self, _now=None):
@@ -187,52 +214,90 @@ class TempoDataCoordinator(DataUpdateCoordinator):
             _LOGGER.info("8h - Retry récupération API (échec à 7h)")
             await self.async_refresh()
 
+    def _validate_and_cache_data(self, new_data: dict) -> bool:
+        """Valide les nouvelles données et met à jour le cache si valides."""
+        if not new_data:
+            _LOGGER.warning("Données vides reçues de l'API")
+            return False
+        
+        today = self.get_tempo_date(0)
+        tomorrow = self.get_tempo_date(1)
+        
+        # Vérifie que les données essentielles sont présentes
+        today_color = new_data.get(today)
+        tomorrow_color = new_data.get(tomorrow)
+        
+        if not today_color or today_color not in COLORS:
+            _LOGGER.warning(f"Couleur invalide pour J ({today}): {today_color}")
+            return False
+        
+        # J+1 peut ne pas encore être disponible (avant 7h)
+        if tomorrow_color and tomorrow_color not in COLORS:
+            _LOGGER.warning(f"Couleur invalide pour J+1 ({tomorrow}): {tomorrow_color}")
+        
+        # Mise à jour du cache avec les données valides
+        for date, color in new_data.items():
+            if color in COLORS:
+                self._cached_data[date] = color
+        
+        _LOGGER.info(f"Cache mis à jour - J: {today_color}, J+1: {tomorrow_color if tomorrow_color else 'N/A'}")
+        return True
+
     async def _async_update_data(self):
         """Récupération des données depuis l'API RTE."""
         season = self.get_current_season()
         url = f"{API_URL}?season={season}"
         
-        current_period = self.get_period()
-        period_changed = self._last_period != current_period
-        if period_changed:
-            self._last_period = current_period
-        
         try:
             # Créer un contexte SSL qui ignore la vérification du certificat
-            # Note: Ce n'est pas idéal pour la sécurité, mais nécessaire si le certificat RTE a un problème
             ssl_context = ssl.create_default_context()
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
             
             connector = aiohttp.TCPConnector(ssl=ssl_context)
             
-            async with async_timeout.timeout(10):
+            async with async_timeout.timeout(15):
                 async with aiohttp.ClientSession(connector=connector) as session:
                     async with session.get(url) as response:
                         if response.status != 200:
-                            raise UpdateFailed(f"Erreur API: {response.status}")
+                            _LOGGER.error(f"Erreur API HTTP {response.status}")
+                            # En cas d'erreur, on garde les données du cache
+                            return self._cached_data
                         
                         data = await response.json()
-                        self.tempo_data = data.get("values", {})
-                        self._data_fetched_today = True
+                        new_data = data.get("values", {})
                         
-                        today = self.get_tempo_date(0)
-                        tomorrow = self.get_tempo_date(1)
-                        
-                        _LOGGER.info(
-                            "Données Tempo mises à jour: J=%s (%s), J+1=%s (%s)%s",
-                            self.get_color_name(today),
-                            self.get_color_code(today),
-                            self.get_color_name(tomorrow),
-                            self.get_color_code(tomorrow),
-                            f" [Passage {current_period}]" if period_changed else ""
-                        )
+                        # Valide et met en cache les données
+                        if self._validate_and_cache_data(new_data):
+                            self.tempo_data = new_data
+                            self._data_fetched_today = True
+                            
+                            today = self.get_tempo_date(0)
+                            tomorrow = self.get_tempo_date(1)
+                            
+                            _LOGGER.info(
+                                "✓ Données Tempo récupérées: J=%s (%s), J+1=%s (%s)",
+                                self.get_color_name(today),
+                                self.get_color_code(today),
+                                self.get_color_name(tomorrow),
+                                self.get_color_code(tomorrow)
+                            )
+                        else:
+                            _LOGGER.warning("Données invalides, conservation du cache")
+                            # On garde les données du cache
+                            return self._cached_data
                         
                         return self.tempo_data
                         
+        except asyncio.TimeoutError:
+            _LOGGER.error("Timeout lors de la récupération des données API")
+            return self._cached_data
+        except aiohttp.ClientError as err:
+            _LOGGER.error(f"Erreur de connexion API: {err}")
+            return self._cached_data
         except Exception as err:
-            _LOGGER.error(f"Erreur lors de la mise à jour: {err}")
-            raise UpdateFailed(f"Erreur lors de la mise à jour: {err}")
+            _LOGGER.error(f"Erreur inattendue: {err}", exc_info=True)
+            return self._cached_data
 
 
 class TempoSensor(CoordinatorEntity, SensorEntity):
@@ -246,6 +311,13 @@ class TempoSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = "EDF Tempo"
         self._attr_icon = "mdi:flash"
         self._attr_has_entity_name = True
+        self._last_state = None
+
+    @property
+    def available(self) -> bool:
+        """Le sensor est disponible si on a au moins des données en cache."""
+        today = self.coordinator.get_tempo_date(0)
+        return self.coordinator.get_color_code(today) != 0
 
     @property
     def native_value(self) -> str:
@@ -253,7 +325,15 @@ class TempoSensor(CoordinatorEntity, SensorEntity):
         today = self.coordinator.get_tempo_date(0)
         color_name = self.coordinator.get_color_name(today)
         period = self.coordinator.get_period()
-        return f"{color_name} {period}"
+        
+        new_state = f"{color_name} {period}"
+        
+        # Log uniquement si l'état change réellement
+        if new_state != self._last_state and self._last_state is not None:
+            _LOGGER.info(f"Changement d'état: {self._last_state} → {new_state}")
+        
+        self._last_state = new_state
+        return new_state
 
     @property
     def extra_state_attributes(self):
@@ -317,4 +397,7 @@ class TempoSensor(CoordinatorEntity, SensorEntity):
             
             # Saison
             "season": self.coordinator.get_current_season(),
+            
+            # Info système
+            "data_source": "cache" if today not in self.coordinator.tempo_data else "api",
         }
