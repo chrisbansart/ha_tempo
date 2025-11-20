@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timedelta
 import aiohttp
 import async_timeout
+import ssl
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -50,11 +51,13 @@ class TempoDataCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name="Tempo",
-            update_interval=timedelta(minutes=5),  # Check fréquent pour détecter les changements d'heure
+            update_interval=timedelta(hours=24),  # Mise à jour quotidienne par défaut
         )
         self.tempo_data = {}
-        self._last_period = None  # Pour détecter les changements HP/HC
-        self._schedule_next_update()
+        self._last_period = None
+        self._last_update_attempt = None
+        self._data_fetched_today = False
+        self._schedule_updates()
 
     def get_current_season(self) -> str:
         """Retourne la saison actuelle (ex: 2024-2025)."""
@@ -105,29 +108,20 @@ class TempoDataCoordinator(DataUpdateCoordinator):
         """Retourne la période actuelle."""
         return "HC" if self.is_hc_time() else "HP"
 
-    def _schedule_next_update(self):
-        """Programme la prochaine mise à jour aux heures clés (6h et 22h)."""
+    def _schedule_updates(self):
+        """Programme les mises à jour aux heures clés."""
         from homeassistant.helpers.event import async_track_time_change
         
-        # Mise à jour à 6h (passage HP + nouvelle couleur J)
+        # À 6h : passage HP + activation des détecteurs J
         async_track_time_change(
             self.hass,
-            self._trigger_update,
+            self._trigger_period_change,
             hour=6,
             minute=0,
             second=0
         )
         
-        # Mise à jour à 22h (passage HC)
-        async_track_time_change(
-            self.hass,
-            self._trigger_update,
-            hour=22,
-            minute=0,
-            second=0
-        )
-        
-        # Mise à jour à 7h (récupération couleur J+1 depuis API)
+        # À 7h : récupération API pour couleur J+1
         async_track_time_change(
             self.hass,
             self._trigger_api_refresh,
@@ -136,48 +130,91 @@ class TempoDataCoordinator(DataUpdateCoordinator):
             second=0
         )
         
-        _LOGGER.info("Mises à jour programmées: 6h (passage HP), 7h (API J+1), 22h (passage HC)")
+        # À 8h : retry si échec à 7h
+        async_track_time_change(
+            self.hass,
+            self._trigger_api_retry,
+            hour=8,
+            minute=0,
+            second=0
+        )
+        
+        # À 22h : passage HC
+        async_track_time_change(
+            self.hass,
+            self._trigger_period_change,
+            hour=22,
+            minute=0,
+            second=0
+        )
+        
+        _LOGGER.info("Mises à jour programmées: 6h (J HP), 7h (API J+1), 8h (retry), 22h (J HC)")
 
-    async def _trigger_update(self, _now=None):
-        """Force une mise à jour des entités (changement HP/HC)."""
+    async def _trigger_period_change(self, _now=None):
+        """Changement de période HP/HC ou de jour."""
+        now = dt_util.now().astimezone(dt_util.get_time_zone("Europe/Paris"))
         current_period = self.get_period()
         
+        if now.hour == 6:
+            _LOGGER.info("6h - Passage au jour J en mode HP")
+            self._data_fetched_today = False  # Reset pour permettre la récupération à 7h
+        elif now.hour == 22:
+            _LOGGER.info("22h - Passage en heures creuses (HC)")
+        
         if self._last_period != current_period:
-            _LOGGER.info(
-                "Changement de période détecté: %s → %s",
-                self._last_period,
-                current_period
-            )
             self._last_period = current_period
-            
-            # Force la mise à jour de toutes les entités
-            self.async_set_updated_data(self.tempo_data)
+        
+        # Force la mise à jour des entités
+        self.async_set_updated_data(self.tempo_data)
 
     async def _trigger_api_refresh(self, _now=None):
-        """Force un rafraîchissement depuis l'API."""
-        _LOGGER.info("Rafraîchissement API programmé (7h)")
+        """Récupération API à 7h pour couleur J+1."""
+        now = dt_util.now().astimezone(dt_util.get_time_zone("Europe/Paris"))
+        today_date = now.strftime("%Y-%m-%d")
+        
+        # Évite les appels multiples le même jour
+        if self._last_update_attempt == today_date and self._data_fetched_today:
+            _LOGGER.info("Données J+1 déjà récupérées aujourd'hui, skip")
+            return
+        
+        _LOGGER.info("7h - Récupération API pour couleur J+1")
+        self._last_update_attempt = today_date
         await self.async_refresh()
+
+    async def _trigger_api_retry(self, _now=None):
+        """Retry à 8h si échec à 7h."""
+        if not self._data_fetched_today:
+            _LOGGER.info("8h - Retry récupération API (échec à 7h)")
+            await self.async_refresh()
 
     async def _async_update_data(self):
         """Récupération des données depuis l'API RTE."""
         season = self.get_current_season()
         url = f"{API_URL}?season={season}"
         
-        # Détecte si on change de période
         current_period = self.get_period()
         period_changed = self._last_period != current_period
         if period_changed:
             self._last_period = current_period
         
         try:
+            # Créer un contexte SSL qui ignore la vérification du certificat
+            # Note: Ce n'est pas idéal pour la sécurité, mais nécessaire si le certificat RTE a un problème
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            
+            connector = aiohttp.TCPConnector(ssl=ssl_context)
+            
             async with async_timeout.timeout(10):
-                async with aiohttp.ClientSession() as session:
+                async with aiohttp.ClientSession(connector=connector) as session:
                     async with session.get(url) as response:
                         if response.status != 200:
                             raise UpdateFailed(f"Erreur API: {response.status}")
                         
                         data = await response.json()
                         self.tempo_data = data.get("values", {})
+                        self._data_fetched_today = True
                         
                         today = self.get_tempo_date(0)
                         tomorrow = self.get_tempo_date(1)
@@ -194,6 +231,7 @@ class TempoDataCoordinator(DataUpdateCoordinator):
                         return self.tempo_data
                         
         except Exception as err:
+            _LOGGER.error(f"Erreur lors de la mise à jour: {err}")
             raise UpdateFailed(f"Erreur lors de la mise à jour: {err}")
 
 
@@ -261,7 +299,7 @@ class TempoSensor(CoordinatorEntity, SensorEntity):
             "tomorrow_is_white": tomorrow_color_code == 2,
             "tomorrow_is_red": tomorrow_color_code == 3,
             
-            # Combinaisons pratiques pour automatisations
+            # Combinaisons pratiques pour automatisations J
             "today_red_hp": today_color_code == 3 and not is_hc,
             "today_red_hc": today_color_code == 3 and is_hc,
             "today_white_hp": today_color_code == 2 and not is_hc,
@@ -269,6 +307,7 @@ class TempoSensor(CoordinatorEntity, SensorEntity):
             "today_blue_hp": today_color_code == 1 and not is_hc,
             "today_blue_hc": today_color_code == 1 and is_hc,
             
+            # Combinaisons pratiques pour automatisations J+1
             "tomorrow_red_hp": tomorrow_color_code == 3 and not is_hc,
             "tomorrow_red_hc": tomorrow_color_code == 3 and is_hc,
             "tomorrow_white_hp": tomorrow_color_code == 2 and not is_hc,
