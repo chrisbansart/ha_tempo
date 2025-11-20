@@ -1,0 +1,11 @@
+{
+  "domain": "tempo",
+  "name": "EDF Tempo",
+  "codeowners": ["@votre_username"],
+  "config_flow": true,
+  "documentation": "https://github.com/votre-repo/homeassistant-tempo",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/votre-repo/homeassistant-tempo/issues",
+  "requirements": ["aiohttp"],
+  "version": "1.0.0"
+}

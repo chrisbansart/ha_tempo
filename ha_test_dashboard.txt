@@ -1,0 +1,117 @@
+# À ajouter dans votre Lovelace pour tester
+# Interface > Tableau de bord > Modifier > Ajouter une carte > Manuel
+
+type: vertical-stack
+title: 🧪 Test EDF Tempo
+cards:
+  # État principal
+  - type: entity
+    entity: sensor.edf_tempo
+    name: État actuel
+    icon: mdi:flash
+
+  # Informations du jour
+  - type: entities
+    title: "📅 Aujourd'hui (J)"
+    entities:
+      - type: attribute
+        entity: sensor.edf_tempo
+        attribute: today_date
+        name: Date
+      - type: attribute
+        entity: sensor.edf_tempo
+        attribute: today_color
+        name: Couleur
+      - type: attribute
+        entity: sensor.edf_tempo
+        attribute: today_color_code
+        name: Code couleur
+      - type: attribute
+        entity: sensor.edf_tempo
+        attribute: current_period
+        name: Période
+      - type: attribute
+        entity: sensor.edf_tempo
+        attribute: is_hc
+        name: Heures Creuses ?
+
+  # Informations demain
+  - type: entities
+    title: "📅 Demain (J+1)"
+    entities:
+      - type: attribute
+        entity: sensor.edf_tempo
+        attribute: tomorrow_date
+        name: Date
+      - type: attribute
+        entity: sensor.edf_tempo
+        attribute: tomorrow_color
+        name: Couleur
+      - type: attribute
+        entity: sensor.edf_tempo
+        attribute: tomorrow_color_code
+        name: Code couleur
+
+  # Tests des combinaisons
+  - type: entities
+    title: "🔍 Tests combinaisons"
+    entities:
+      - type: attribute
+        entity: sensor.edf_tempo
+        attribute: today_red_hp
+        name: "Aujourd'hui = Rouge HP ?"
+      - type: attribute
+        entity: sensor.edf_tempo
+        attribute: today_red_hc
+        name: "Aujourd'hui = Rouge HC ?"
+      - type: attribute
+        entity: sensor.edf_tempo
+        attribute: tomorrow_is_red
+        name: "Demain = Rouge ?"
+      - type: attribute
+        entity: sensor.edf_tempo
+        attribute: tomorrow_is_blue
+        name: "Demain = Bleu ?"
+
+  # Template card pour affichage personnalisé
+  - type: markdown
+    content: |
+      ## 🎨 Résumé visuel
+      
+      **État :** `{{ states('sensor.edf_tempo') }}`
+      
+      ---
+      
+      ### Aujourd'hui
+      - Couleur : **{{ state_attr('sensor.edf_tempo', 'today_color') }}**
+      - Période : **{{ state_attr('sensor.edf_tempo', 'current_period') }}**
+      - Heure : **{{ state_attr('sensor.edf_tempo', 'current_hour') }}h**
+      
+      ### Demain
+      - Couleur : **{{ state_attr('sensor.edf_tempo', 'tomorrow_color') }}**
+      
+      ---
+      
+      {% if state_attr('sensor.edf_tempo', 'today_red_hp') %}
+      ⚠️ **ATTENTION : Jour Rouge HP actif !**
+      {% elif state_attr('sensor.edf_tempo', 'tomorrow_is_red') %}
+      ⚠️ **ALERTE : Demain sera un jour rouge**
+      {% else %}
+      ✅ Pas d'alerte Tempo
+      {% endif %}
+
+  # Bouton de débogage
+  - type: entities
+    title: "🔧 Actions de debug"
+    entities:
+      - entity: sensor.edf_tempo
+        secondary_info: last-changed
+        name: Dernière mise à jour
+      - type: button
+        name: Rafraîchir l'entité
+        action_name: Actualiser
+        tap_action:
+          action: call-service
+          service: homeassistant.update_entity
+          service_data:
+            entity_id: sensor.edf_tempo
