@@ -25,9 +25,9 @@ DOMAIN = "tempo"
 API_URL = "https://www.services-rte.com/cms/open_data/v1/tempo"
 
 COLORS = {
-    "BLUE": {"code": 1, "name": "Bleu", "name_en": "blue"},
-    "WHITE": {"code": 2, "name": "Blanc", "name_en": "white"},
-    "RED": {"code": 3, "name": "Rouge", "name_en": "red"},
+    "BLUE": {"code": 1, "name": "Bleu", "name_en": "blue", "emoji":"🔵"},
+    "WHITE": {"code": 2, "name": "Blanc", "name_en": "white","emoji":"⚪"},
+    "RED": {"code": 3, "name": "Rouge", "name_en": "red","emoji":"🔴"},
 }
 
 
@@ -124,6 +124,18 @@ class TempoDataCoordinator(DataUpdateCoordinator):
             return COLORS[color]["name_en"]
         
         return "unknown"
+    
+    def get_color_emoji(self, date: str) -> str:
+        """Retourne l'emoji de la couleur pour une date donnée (avec cache)."""
+        color = self.tempo_data.get(date, "")
+        if color and color in COLORS:
+            return COLORS[color]["emoji"]
+        
+        color = self._cached_data.get(date, "")
+        if color and color in COLORS:
+            return COLORS[color]["emoji"]
+        
+        return "❓"  # Changez "unknown" par un emoji
 
     def is_hc_time(self) -> bool:
         """Vérifie si on est en heures creuses (22h-6h)."""
@@ -351,6 +363,9 @@ class TempoSensor(CoordinatorEntity, SensorEntity):
         today_color_en = self.coordinator.get_color_name_en(today)
         tomorrow_color_en = self.coordinator.get_color_name_en(tomorrow)
         
+        today_color_emoji = self.coordinator.get_color_emoji(today)
+        tomorrow_color_emoji = self.coordinator.get_color_emoji(tomorrow)
+
         is_hc = self.coordinator.is_hc_time()
         period = "HC" if is_hc else "HP"
         
@@ -364,8 +379,10 @@ class TempoSensor(CoordinatorEntity, SensorEntity):
             # Jour J
             "today_date": today,
             "today_color": today_color,
+            "today_color_emoji": today_color_emoji,
             "today_color_en": today_color_en,
             "today_color_code": today_color_code,
+            "today_color_emoji":today_color_emoji,
             "today_is_blue": today_color_code == 1,
             "today_is_white": today_color_code == 2,
             "today_is_red": today_color_code == 3,
@@ -375,6 +392,7 @@ class TempoSensor(CoordinatorEntity, SensorEntity):
             "tomorrow_color": tomorrow_color,
             "tomorrow_color_en": tomorrow_color_en,
             "tomorrow_color_code": tomorrow_color_code,
+            "tomorrow_color_emoji":tomorrow_color_emoji,
             "tomorrow_is_blue": tomorrow_color_code == 1,
             "tomorrow_is_white": tomorrow_color_code == 2,
             "tomorrow_is_red": tomorrow_color_code == 3,
