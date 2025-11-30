@@ -36,12 +36,14 @@ Exemples : `Rouge HP`, `Blanc HC`, `Bleu HP`
 ## 📊 Attributs disponibles
 
 ### Informations actuelles
+
 - `current_hour` : Heure actuelle
 - `current_period` : "HP" ou "HC"
 - `is_hc` : true/false (heures creuses)
 - `is_hp` : true/false (heures pleines)
 
 ### Jour actuel (J)
+
 - `today_date` : Date (YYYY-MM-DD)
 - `today_color` : "Rouge", "Blanc" ou "Bleu"
 - `today_color_en` : "red", "white" ou "blue"
@@ -49,6 +51,7 @@ Exemples : `Rouge HP`, `Blanc HC`, `Bleu HP`
 - `today_is_red` / `today_is_white` / `today_is_blue` : true/false
 
 ### Lendemain (J+1)
+
 - `tomorrow_date` : Date (YYYY-MM-DD)
 - `tomorrow_color` : "Rouge", "Blanc" ou "Bleu"
 - `tomorrow_color_en` : "red", "white" ou "blue"
@@ -56,6 +59,7 @@ Exemples : `Rouge HP`, `Blanc HC`, `Bleu HP`
 - `tomorrow_is_red` / `tomorrow_is_white` / `tomorrow_is_blue` : true/false
 
 ### Combinaisons pratiques
+
 - `today_red_hp` / `today_red_hc` : true si jour rouge + période correspondante
 - `today_white_hp` / `today_white_hc`
 - `today_blue_hp` / `today_blue_hc`
@@ -64,6 +68,7 @@ Exemples : `Rouge HP`, `Blanc HC`, `Bleu HP`
 - `tomorrow_blue_hp` / `tomorrow_blue_hc`
 
 ### Autres
+
 - `season` : Saison actuelle (ex: "2024-2025")
 
 ## 🤖 Exemples d'automatisations
@@ -119,7 +124,7 @@ automation:
     action:
       - service: switch.turn_on
         target:
-          entity_id: 
+          entity_id:
             - switch.cumulus
             - switch.charge_voiture
       - service: climate.set_temperature
@@ -138,7 +143,7 @@ content: |
   ## Tempo aujourd'hui
   Couleur : **{{ state_attr('sensor.edf_tempo', 'today_color') }}**
   Période : **{{ state_attr('sensor.edf_tempo', 'current_period') }}**
-  
+
   ## Tempo demain
   Couleur : **{{ state_attr('sensor.edf_tempo', 'tomorrow_color') }}**
 ```
@@ -163,13 +168,16 @@ automation:
 L'intégration se met à jour **automatiquement** aux moments clés :
 
 ### Mises à jour programmées
+
 - **6h00** : 🌅 Passage en Heures Pleines + Nouveau jour J
+
   - L'attribut `current_period` passe à "HP"
   - Les attributs `today_*_hp` deviennent actifs
   - Les attributs `today_*_hc` deviennent inactifs
   - La nouvelle couleur du jour est appliquée
 
 - **7h00** : 📡 Récupération API de la couleur J+1
+
   - Appel à l'API RTE pour obtenir la couleur du lendemain
   - Mise à jour des attributs `tomorrow_*`
 
@@ -179,6 +187,7 @@ L'intégration se met à jour **automatiquement** aux moments clés :
   - Les attributs `today_*_hp` deviennent inactifs
 
 ### Vérifications continues
+
 - **Toutes les 5 minutes** : Vérification de l'état pour détecter tout changement d'heure manqué
 
 ### Automatisations déclenchées automatiquement
@@ -235,7 +244,7 @@ template:
       - name: "Jour Rouge HP"
         state: "{{ state_attr('sensor.edf_tempo', 'today_red_hp') }}"
         icon: mdi:flash-alert
-        
+
       - name: "Demain Rouge"
         state: "{{ state_attr('sensor.edf_tempo', 'tomorrow_is_red') }}"
         icon: mdi:calendar-alert

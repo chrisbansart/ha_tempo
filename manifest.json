@@ -1,11 +1,11 @@
 {
   "domain": "tempo",
-  "name": "EDF Tempo",
+  "name": "Un plugin homeassistant pour les abonnés à la formule Tempo d'EDF - RTE. A homeassistant plugin for EDF Tempo (French electricity provider pricing plan named Tempo)",
   "codeowners": ["@chrisbansart"],
   "config_flow": true,
-  "documentation": "https://github.com/votre-repo/homeassistant-tempo",
+  "documentation": "https://github.com/chrisbansart/ha_tempo",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/votre-repo/homeassistant-tempo/issues",
+  "issue_tracker": "https://github.com/chrisbansart/ha_tempo/issues",
   "requirements": ["aiohttp"],
-  "version": "1.4.1"
+  "version": "1.4.2"
 }
