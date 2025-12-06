@@ -1,0 +1,12 @@
+{
+  "domain": "tempo",
+  "name": "EDF Tempo",
+  "description": "Intégration EDF Tempo pour Home Assistant : suivi des couleurs tarifaires (Bleu/Blanc/Rouge) et des périodes HP/HC avec automatisations intelligentes.",
+  "codeowners": ["@chrisbansart"],
+  "config_flow": true,
+  "documentation": "https://github.com/chrisbansart/ha_tempo",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/chrisbansart/ha_tempo/issues",
+  "requirements": ["aiohttp"],
+  "version": "1.4.2"
+}
