@@ -1,23 +1,29 @@
 # Home Assistant - Intégration EDF Tempo
 
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
+[![GitHub release](https://img.shields.io/github/release/chrisbansart/ha_tempo.svg)](https://github.com/chrisbansart/ha_tempo/releases)
+[![License](https://img.shields.io/github/license/chrisbansart/ha_tempo.svg)](LICENSE)
+
 Intégration pour afficher les couleurs Tempo dans Home Assistant avec **une seule entité** contenant tous les états.
+
+> **Plugin officiel pour les abonnés EDF Tempo** - Récupère les données en temps réel depuis l'API RTE et permet de créer des automatisations basées sur les périodes tarifaires (Heures Creuses/Heures Pleines) et les couleurs (Bleu/Blanc/Rouge).
 
 ## 📦 Installation
 
 ### Option 1 : Installation manuelle
 
 1. Créez le dossier `custom_components/tempo/` dans votre configuration Home Assistant
-2. Copiez-y les fichiers suivants :
-   - `__init__.py`
-   - `sensor.py` (renommez binary_sensor.py)
-   - `config_flow.py`
-   - `manifest.json`
+2. Copiez-y tous les fichiers `.py` et `manifest.json` de ce repository
+3. Redémarrez Home Assistant
 
 ### Option 2 : Via HACS (recommandé)
 
-1. Ajoutez ce repository comme repository personnalisé dans HACS
-2. Recherchez "EDF Tempo" et installez
-3. Redémarrez Home Assistant
+1. Ouvrez HACS dans Home Assistant
+2. Cliquez sur les 3 points en haut à droite puis "Custom repositories"
+3. Ajoutez `https://github.com/chrisbansart/ha_tempo` avec la catégorie "Integration"
+4. Recherchez "EDF Tempo" dans HACS
+5. Cliquez sur "Download"
+6. Redémarrez Home Assistant
 
 ## ⚙️ Configuration
 
@@ -256,8 +262,10 @@ Pour signaler un bug ou demander une fonctionnalité, ouvrez une issue sur GitHu
 
 ## 📄 Licence
 
-ISC © 2025
+GNU GPL v3 © 2025 Christophe Bansart
+
+Ce logiciel est distribué sous licence GNU General Public License v3.0. Voir le fichier [LICENSE](LICENSE) pour plus de détails.
 
 ---
 
-**Adapté du plugin Homebridge Tempo par Christophe Bansart**
+**Développé par Christophe Bansart**

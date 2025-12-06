@@ -1,6 +1,6 @@
 {
   "domain": "tempo",
-  "name": "Un plugin homeassistant pour les abonnés à la formule Tempo d'EDF - RTE. A homeassistant plugin for EDF Tempo (French electricity provider pricing plan named Tempo)",
+  "name": "EDF Tempo",
   "codeowners": ["@chrisbansart"],
   "config_flow": true,
   "documentation": "https://github.com/chrisbansart/ha_tempo",
