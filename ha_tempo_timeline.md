@@ -10,7 +10,7 @@
 00:00 ─┐
        │  🌙 Heures Creuses
        │  • is_hc = true
-       │  • today_red_hc = true
+       │  • today_is_red_hc = true
        │  • Cumulus ON
        │  • Charge voiture ON
 05:59 ─┘
@@ -19,12 +19,12 @@
        │  ═══════════════════════════════
        │  ✅ Passage en Heures Pleines
        │  ✅ Nouveau jour J appliqué
-       │  
+       │
        │  États mis à jour:
        │  • is_hc = false → is_hp = true
-       │  • today_red_hc = false
-       │  • today_red_hp = true ⚠️
-       │  
+       │  • today_is_red_hc = false
+       │  • today_is_red_hp = true ⚠️
+       │
        │  🤖 Automatisations déclenchées:
        │  → "Tempo - Début jour rouge HP"
        │    ├─ Notification "Jour Rouge"
@@ -36,12 +36,12 @@
 07:00 ─┐  🔄 DÉCLENCHEMENT AUTOMATIQUE #2
        │  ═══════════════════════════════
        │  ✅ Récupération API couleur J+1
-       │  
+       │
        │  États mis à jour:
        │  • tomorrow_color = "Blanc"
        │  • tomorrow_is_red = false
        │  • tomorrow_is_white = true
-       │  
+       │
        │  🤖 Automatisations déclenchées:
        │  → "Tempo - Info demain bleu"
        │    └─ Notification "Demain Blanc"
@@ -58,19 +58,19 @@
 22:00 ─┐  🔄 DÉCLENCHEMENT AUTOMATIQUE #3
        │  ═══════════════════════════════
        │  ✅ Passage en Heures Creuses
-       │  
+       │
        │  États mis à jour:
        │  • is_hp = false → is_hc = true
-       │  • today_red_hp = false
-       │  • today_red_hc = true
-       │  
+       │  • today_is_red_hp = false
+       │  • today_is_red_hc = true
+       │
        │  🤖 Automatisations déclenchées:
        │  → "Tempo - Passage en heures creuses"
        │    ├─ Notification "HC activées"
        │    ├─ Cumulus ON
        │    ├─ Charge voiture ON
        │    └─ Chauffage → 20°C
-       │  
+       │
        │  → "Tempo - Jour rouge HC"
        │    └─ Charge maximale appareils
        │
@@ -89,27 +89,32 @@
 ## 🎯 Points de déclenchement automatiques
 
 ### 1️⃣ 6h00 - Passage HP + Nouveau jour
+
 **Déclencheur :** `async_track_time_change(hour=6)`
 
 **Ce qui se passe :**
+
 ```python
 is_hp = True
 is_hc = False
 today_color = nouvelle_couleur
-today_*_hp = True ou False selon couleur
-today_*_hc = False
+today_is_*_hp = True ou False selon couleur
+today_is_*_hc = False
 ```
 
 **Automatisations déclenchées par :**
-- `attribute: today_red_hp` → `to: true`
-- `attribute: today_white_hp` → `to: true`
-- `attribute: today_blue_hp` → `to: true`
+
+- `attribute: today_is_red_hp` → `to: true`
+- `attribute: today_is_white_hp` → `to: true`
+- `attribute: today_is_blue_hp` → `to: true`
 - `attribute: is_hp` → `to: true`
 
 ### 2️⃣ 7h00 - Récupération J+1
+
 **Déclencheur :** `async_track_time_change(hour=7)`
 
 **Ce qui se passe :**
+
 ```python
 Appel API RTE
 tomorrow_color = couleur_j1
@@ -119,31 +124,37 @@ tomorrow_is_blue = True ou False
 ```
 
 **Automatisations déclenchées par :**
+
 - `attribute: tomorrow_is_red` → `to: true`
 - `attribute: tomorrow_is_white` → `to: true`
 - `attribute: tomorrow_is_blue` → `to: true`
 
 ### 3️⃣ 22h00 - Passage HC
+
 **Déclencheur :** `async_track_time_change(hour=22)`
 
 **Ce qui se passe :**
+
 ```python
 is_hc = True
 is_hp = False
-today_*_hp = False
-today_*_hc = True ou False selon couleur
+today_is_*_hp = False
+today_is_*_hc = True ou False selon couleur
 ```
 
 **Automatisations déclenchées par :**
-- `attribute: today_red_hc` → `to: true`
-- `attribute: today_white_hc` → `to: true`
-- `attribute: today_blue_hc` → `to: true`
+
+- `attribute: today_is_red_hc` → `to: true`
+- `attribute: today_is_white_hc` → `to: true`
+- `attribute: today_is_blue_hc` → `to: true`
 - `attribute: is_hc` → `to: true`
 
 ### 4️⃣ Toutes les 5 minutes - Vérification
+
 **Déclencheur :** `update_interval=timedelta(minutes=5)`
 
-**Objectif :** 
+**Objectif :**
+
 - Détecter tout changement d'heure manqué
 - Assurer la cohérence des états
 - Backup des déclenchements programmés
@@ -169,6 +180,7 @@ today_*_hc = True ou False selon couleur
 ### Logs de suivi
 
 À chaque événement clé :
+
 ```
 [INFO] Changement de période détecté: HP → HC
 [INFO] Données Tempo mises à jour: J=Rouge (3), J+1=Blanc (2) [Passage HC]
@@ -180,11 +192,13 @@ today_*_hc = True ou False selon couleur
 ### Scénario : Jour Rouge
 
 **05:59** - Vous dormez
+
 - Voiture en charge
 - Cumulus chauffe
 - Chauffage normal 20°C
 
 **06:00** - Déclenchement automatique ⚡
+
 - Notification sur téléphone "⚠️ Jour Rouge"
 - Chauffage baisse à 18°C
 - Cumulus s'éteint
@@ -192,11 +206,13 @@ today_*_hc = True ou False selon couleur
 - **Vous n'avez rien fait !**
 
 **12:00** - Journée
+
 - Pas de lavage
 - Pas de cuisson four longue
 - Économies automatiques
 
 **22:00** - Déclenchement automatique ⚡
+
 - Notification "🌙 Heures Creuses"
 - Cumulus redémarre
 - Voiture recharge
@@ -204,6 +220,7 @@ today_*_hc = True ou False selon couleur
 - **Vous n'avez rien fait !**
 
 **Le lendemain 06:00** - Fin du jour rouge
+
 - Retour à la normale automatique
 
 ## 💡 Pas d'intervention manuelle requise

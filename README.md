@@ -66,12 +66,9 @@ Exemples : `Rouge HP`, `Blanc HC`, `Bleu HP`
 
 ### Combinaisons pratiques
 
-- `today_red_hp` / `today_red_hc` : true si jour rouge + période correspondante
-- `today_white_hp` / `today_white_hc`
-- `today_blue_hp` / `today_blue_hc`
-- `tomorrow_red_hp` / `tomorrow_red_hc`
-- `tomorrow_white_hp` / `tomorrow_white_hc`
-- `tomorrow_blue_hp` / `tomorrow_blue_hc`
+- `today_is_red_hp` / `today_is_red_hc` : true si jour rouge + période correspondante
+- `today_is_white_hp` / `today_is_white_hc`
+- `today_is_blue_hp` / `today_is_blue_hc`
 
 ### Autres
 
@@ -87,7 +84,7 @@ automation:
     trigger:
       - platform: state
         entity_id: sensor.edf_tempo
-        attribute: today_red_hp
+        attribute: today_is_red_hp
         to: true
     action:
       - service: climate.set_temperature
@@ -178,8 +175,8 @@ L'intégration se met à jour **automatiquement** aux moments clés :
 - **6h00** : 🌅 Passage en Heures Pleines + Nouveau jour J
 
   - L'attribut `current_period` passe à "HP"
-  - Les attributs `today_*_hp` deviennent actifs
-  - Les attributs `today_*_hc` deviennent inactifs
+  - Les attributs `today_is_*_hp` deviennent actifs
+  - Les attributs `today_is_*_hc` deviennent inactifs
   - La nouvelle couleur du jour est appliquée
 
 - **7h00** : 📡 Récupération API de la couleur J+1
@@ -189,8 +186,8 @@ L'intégration se met à jour **automatiquement** aux moments clés :
 
 - **22h00** : 🌙 Passage en Heures Creuses
   - L'attribut `current_period` passe à "HC"
-  - Les attributs `today_*_hc` deviennent actifs
-  - Les attributs `today_*_hp` deviennent inactifs
+  - Les attributs `today_is_*_hc` deviennent actifs
+  - Les attributs `today_is_*_hp` deviennent inactifs
 
 ### Vérifications continues
 
@@ -212,7 +209,7 @@ trigger:
 trigger:
   - platform: state
     entity_id: sensor.edf_tempo
-    attribute: today_red_hp
+    attribute: today_is_red_hp
     to: true
 ```
 
@@ -248,7 +245,7 @@ Si vous préférez avoir des sensors individuels, créez des template sensors :
 template:
   - binary_sensor:
       - name: "Jour Rouge HP"
-        state: "{{ state_attr('sensor.edf_tempo', 'today_red_hp') }}"
+        state: "{{ state_attr('sensor.edf_tempo', 'today_is_red_hp') }}"
         icon: mdi:flash-alert
 
       - name: "Demain Rouge"

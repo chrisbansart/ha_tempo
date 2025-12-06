@@ -9,5 +9,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/chrisbansart/ha_tempo/issues",
   "requirements": [],
-  "version": "1.4.5"
+  "version": "1.5.0"
 }
