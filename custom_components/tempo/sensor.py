@@ -56,7 +56,7 @@ async def async_setup_entry(
     coordinator = TempoDataCoordinator(hass)
     await coordinator.async_config_entry_first_refresh()
 
-    async_add_entities([TempoSensor(coordinator)])
+    async_add_entities([TempoSensor(coordinator, entry)])
 
 
 class TempoDataCoordinator(DataUpdateCoordinator):
@@ -75,13 +75,24 @@ class TempoDataCoordinator(DataUpdateCoordinator):
         self._last_period = None
         self._last_api_call = None
         self._data_fetched_today = False
-
-        # Créer le contexte SSL en dehors de la boucle d'événements
-        self._ssl_context = ssl.create_default_context()
-        self._ssl_context.check_hostname = False
-        self._ssl_context.verify_mode = ssl.CERT_NONE
+        self._ssl_context = None
 
         self._schedule_updates()
+
+    async def _async_setup_ssl_context(self) -> None:
+        """Configure le contexte SSL de manière asynchrone."""
+        if self._ssl_context is None:
+            loop = asyncio.get_event_loop()
+            self._ssl_context = await loop.run_in_executor(
+                None, self._create_ssl_context
+            )
+
+    def _create_ssl_context(self) -> ssl.SSLContext:
+        """Créer le contexte SSL (exécuté dans un executor)."""
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        return context
 
     def get_current_season(self) -> str:
         """Retourne la saison actuelle (ex: 2024-2025)."""
@@ -279,9 +290,12 @@ class TempoDataCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         """Récupération des données depuis l'API RTE."""
+        # S'assurer que le contexte SSL est créé
+        await self._async_setup_ssl_context()
+
         season = self.get_current_season()
         url = f"{API_URL}?season={season}"
-        
+
         try:
             # Utiliser le contexte SSL pré-créé
             connector = aiohttp.TCPConnector(ssl=self._ssl_context)
@@ -333,11 +347,11 @@ class TempoDataCoordinator(DataUpdateCoordinator):
 class TempoSensor(CoordinatorEntity, SensorEntity):
     """Sensor principal représentant l'état Tempo."""
 
-    def __init__(self, coordinator: TempoDataCoordinator) -> None:
+    def __init__(self, coordinator: TempoDataCoordinator, entry: ConfigEntry) -> None:
         """Initialisation du sensor."""
         super().__init__(coordinator)
-        
-        self._attr_unique_id = "tempo_edf"
+
+        self._attr_unique_id = f"tempo_edf_{entry.entry_id}"
         self._attr_name = "EDF Tempo"
         self._attr_icon = "mdi:flash"
         self._attr_has_entity_name = True
