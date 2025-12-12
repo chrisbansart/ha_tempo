@@ -75,24 +75,15 @@ class TempoDataCoordinator(DataUpdateCoordinator):
         self._last_period = None
         self._last_api_call = None
         self._data_fetched_today = False
-        self._ssl_context = None
+        
+        # Créer le contexte SSL en dehors de la boucle d'événements
+        self._ssl_context = ssl.create_default_context()
+        self._ssl_context.check_hostname = False
+        self._ssl_context.verify_mode = ssl.CERT_NONE
 
         self._schedule_updates()
 
-    async def _async_setup_ssl_context(self) -> None:
-        """Configure le contexte SSL de manière asynchrone."""
-        if self._ssl_context is None:
-            loop = asyncio.get_event_loop()
-            self._ssl_context = await loop.run_in_executor(
-                None, self._create_ssl_context
-            )
-
-    def _create_ssl_context(self) -> ssl.SSLContext:
-        """Créer le contexte SSL (exécuté dans un executor)."""
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        return context
+   
 
     def get_current_season(self) -> str:
         """Retourne la saison actuelle (ex: 2024-2025)."""
@@ -290,9 +281,6 @@ class TempoDataCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         """Récupération des données depuis l'API RTE."""
-        # S'assurer que le contexte SSL est créé
-        await self._async_setup_ssl_context()
-
         season = self.get_current_season()
         url = f"{API_URL}?season={season}"
 
