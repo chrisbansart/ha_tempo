@@ -19,7 +19,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 import aiohttp
 import async_timeout
 import asyncio
@@ -30,7 +30,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
-    UpdateFailed,
 )
 from homeassistant.util import dt as dt_util
 from homeassistant.util.ssl import get_default_no_verify_context
@@ -45,6 +44,9 @@ COLORS = {
     "WHITE": {"code": 2, "name": "Blanc", "name_en": "white","emoji":"⚪"},
     "RED": {"code": 3, "name": "Rouge", "name_en": "red","emoji":"🔴"},
 }
+
+HP_HOUR = 6
+HC_HOUR = 22
 
 
 async def async_setup_entry(
@@ -95,16 +97,16 @@ class TempoDataCoordinator(DataUpdateCoordinator):
 
     def get_tempo_date(self, offset_days: int = 0) -> str:
         """
-        Retourne la date Tempo (en tenant compte du décalage 6h).
+        Retourne la date Tempo (en tenant compte du décalage {HP_HOUR}h).
         offset_days: 0 pour J, 1 pour J+1
         """
-        now = dt_util.now().astimezone(dt_util.get_time_zone("Europe/Paris"))
+        # now = dt_util.now().astimezone(dt_util.get_time_zone("Europe/Paris"))
         
         # Si avant 6h du matin, on considère que c'est encore la veille
-        if now.hour < 6:
-            now = now - timedelta(days=1)
+        # if now.hour < 6:
+        #     now = now - timedelta(days=1)
         
-        target_date = now + timedelta(days=offset_days)
+        target_date = dt_util.now().astimezone(dt_util.get_time_zone("Europe/Paris")) - timedelta(hours=HP_HOUR) + timedelta(days=offset_days)
         return target_date.strftime("%Y-%m-%d")
 
     def get_color_code(self, date: str) -> int:
@@ -160,10 +162,10 @@ class TempoDataCoordinator(DataUpdateCoordinator):
         return "❓"  # Changez "unknown" par un emoji
 
     def is_hc_time(self) -> bool:
-        """Vérifie si on est en heures creuses (22h-6h)."""
+        """Vérifie si on est en heures creuses ({HC_HOUR}h-{HP_HOUR}h)."""
         now = dt_util.now().astimezone(dt_util.get_time_zone("Europe/Paris"))
         hour = now.hour
-        return hour >= 22 or hour < 6
+        return hour >= HC_HOUR or hour < HP_HOUR
 
     def get_period(self) -> str:
         """Retourne la période actuelle."""
@@ -173,11 +175,11 @@ class TempoDataCoordinator(DataUpdateCoordinator):
         """Programme les mises à jour aux heures clés."""
         from homeassistant.helpers.event import async_track_time_change
 
-        # À 6h : passage HP + activation des détecteurs J
+        # À {HP_HOUR}h : passage HP + activation des détecteurs J
         async_track_time_change(
             self.hass,
             self._trigger_period_change,
-            hour=6,
+            hour=HP_HOUR,
             minute=0,
             second=0
         )
@@ -201,27 +203,27 @@ class TempoDataCoordinator(DataUpdateCoordinator):
                 second=0
             )
 
-        # À 22h : passage HC
+        # À {HC_HOUR}h : passage HC
         async_track_time_change(
             self.hass,
             self._trigger_period_change,
-            hour=22,
+            hour=HC_HOUR,
             minute=0,
             second=0
         )
 
-        _LOGGER.info("Mises à jour programmées: 6h (J HP), 7h05 (API J+1), 9h05/11h05/13h05 (retries), 22h (J HC)")
+        _LOGGER.info(f"Mises à jour programmées: {HP_HOUR}h (J HP), 7h05 (API J+1), 9h05/11h05/13h05 (retries), {HC_HOUR}h (J HC)")
 
     async def _trigger_period_change(self, _now=None):
         """Changement de période HP/HC ou de jour."""
         now = dt_util.now().astimezone(dt_util.get_time_zone("Europe/Paris"))
         current_period = self.get_period()
         
-        if now.hour == 6:
-            _LOGGER.info("6h - Passage au jour J en mode HP")
+        if now.hour == HP_HOUR:
+            _LOGGER.info("f{HP_HOUR}h - Passage au jour J en mode HP")
             self._data_fetched_today = False  # Reset pour permettre la récupération à 7h
-        elif now.hour == 22:
-            _LOGGER.info("22h - Passage en heures creuses (HC)")
+        elif now.hour == HC_HOUR:
+            _LOGGER.info(f"{HC_HOUR}h - Passage en heures creuses (HC)")
         
         if self._last_period != current_period:
             self._last_period = current_period
@@ -285,6 +287,7 @@ class TempoDataCoordinator(DataUpdateCoordinator):
         # J+1 peut ne pas encore être disponible (avant 7h)
         if tomorrow_color and tomorrow_color not in COLORS:
             _LOGGER.warning(f"[Validation] Couleur J+1 invalide: '{tomorrow_color}' (attendu: {list(COLORS.keys())})")
+            return False
 
         # Mise à jour du cache avec les données valides
         cached_count = 0
