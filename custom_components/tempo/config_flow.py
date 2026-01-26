@@ -17,7 +17,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.core import callback
 
 DOMAIN = "tempo"
 
