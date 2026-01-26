@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "EDF Tempo",
+        "description": "This integration retrieves EDF Tempo tariff colors from the RTE API and creates a single entity with all states."
+      }
+    },
+    "abort": {
+      "already_configured": "EDF Tempo is already configured."
+    }
+  }
+}
