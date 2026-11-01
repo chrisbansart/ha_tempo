@@ -1,0 +1,13 @@
+{
+    "config": {
+      "step": {
+        "user": {
+          "title": "EDF Tempo",
+          "description": "Cette intégration récupère les couleurs Tempo depuis l'API de RTE et crée une entité unique avec tous les états."
+        }
+      },
+      "abort": {
+        "already_configured": "EDF Tempo est déjà configuré."
+      }
+    }
+  }
