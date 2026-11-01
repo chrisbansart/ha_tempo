@@ -18,6 +18,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
+import json
 import logging
 from datetime import datetime, timedelta
 import aiohttp
@@ -39,6 +40,7 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "tempo"
 API_URL = "https://www.services-rte.com/cms/open_data/v1/tempoLight"
+API_URL_SEASON = "https://www.services-rte.com/cms/open_data/v1/tempo"
 
 COLORS = {
     "BLUE": {"code": 1, "name": "Bleu", "name_en": "blue", "emoji":"🔵"},
@@ -296,77 +298,77 @@ class TempoDataCoordinator(DataUpdateCoordinator):
         _LOGGER.info(f"[Validation] Cache mis à jour ({cached_count} entrées) - J: {today_color}, J+1: {tomorrow_color or 'N/A'}")
         return True
 
-    async def _async_update_data(self):
-        """Récupération des données depuis l'API RTE (tempoLight)."""
-        url = API_URL
-        now = dt_util.now().astimezone(dt_util.get_time_zone("Europe/Paris"))
+    async def _fetch_values(self, session, url: str) -> dict:
+        """Appelle une URL de l'API RTE et retourne les couleurs {date: couleur}."""
+        _LOGGER.debug(f"[API] Appel API - URL: {url}")
 
-        _LOGGER.debug(f"[API] Appel API à {now.strftime('%H:%M:%S')} - URL: {url}")
+        async with async_timeout.timeout(15):
+            async with session.get(url) as response:
+                _LOGGER.debug(f"[API] Status HTTP: {response.status}")
+
+                response_text = await response.text()
+                if response.status != 200:
+                    _LOGGER.error(
+                        f"[API] Erreur HTTP {response.status} - Réponse: {response_text[:500]}"
+                    )
+                    return {}
+
+                _LOGGER.debug(f"[API] Réponse brute (500 premiers chars): {response_text[:500]}")
+
+                try:
+                    data = json.loads(response_text)
+                except json.JSONDecodeError as json_err:
+                    _LOGGER.error(f"[API] Erreur parsing JSON: {json_err}")
+                    _LOGGER.error(f"[API] Contenu reçu: {response_text[:1000]}")
+                    return {}
+
+                values = data.get("values", {})
+                if not values:
+                    _LOGGER.warning(f"[API] Clé 'values' vide ou absente - Structure complète: {data}")
+
+                # L'API renvoie aussi des clés "AAAA-MM-JJ-fallback": "false" qui ne sont pas des couleurs
+                return {d: c for d, c in values.items() if c in COLORS}
+
+    async def _async_update_data(self):
+        """Récupération des données depuis l'API RTE (tempoLight, puis saison en secours)."""
+        now = dt_util.now().astimezone(dt_util.get_time_zone("Europe/Paris"))
+        _LOGGER.debug(f"[API] Mise à jour à {now.strftime('%H:%M:%S')}")
 
         try:
             # Utiliser le contexte SSL pré-créé
             connector = aiohttp.TCPConnector(ssl=self._ssl_context)
 
-            async with async_timeout.timeout(15):
-                async with aiohttp.ClientSession(connector=connector) as session:
-                    async with session.get(url) as response:
-                        _LOGGER.debug(f"[API] Status HTTP: {response.status}")
-                        _LOGGER.debug(f"[API] Headers: {dict(response.headers)}")
+            async with aiohttp.ClientSession(connector=connector) as session:
+                new_data = await self._fetch_values(session, API_URL)
 
-                        if response.status != 200:
-                            response_text = await response.text()
-                            _LOGGER.error(
-                                f"[API] Erreur HTTP {response.status} - Réponse: {response_text[:500]}"
-                            )
-                            return self._cached_data
+                # tempoLight renvoie parfois {"values": {}} : on se rabat sur l'API complète de la saison
+                if self.get_tempo_date(0) not in new_data:
+                    season_url = f"{API_URL_SEASON}?season={self.get_current_season()}"
+                    _LOGGER.warning("[API] Date J absente de tempoLight, tentative via l'API saison")
+                    season_data = await self._fetch_values(session, season_url)
+                    if season_data:
+                        new_data = season_data
 
-                        # Lire le contenu brut pour diagnostic
-                        response_text = await response.text()
-                        _LOGGER.debug(f"[API] Réponse brute (500 premiers chars): {response_text[:500]}")
+            # Valide et met en cache les données
+            if self._validate_and_cache_data(new_data):
+                self.tempo_data = new_data
+                self._data_fetched_today = True
 
-                        try:
-                            import json
-                            data = json.loads(response_text)
-                        except json.JSONDecodeError as json_err:
-                            _LOGGER.error(f"[API] Erreur parsing JSON: {json_err}")
-                            _LOGGER.error(f"[API] Contenu reçu: {response_text[:1000]}")
-                            return self._cached_data
+                today = self.get_tempo_date(0)
+                tomorrow = self.get_tempo_date(1)
 
-                        # Log de la structure de la réponse
-                        _LOGGER.debug(f"[API] Clés dans la réponse: {list(data.keys())}")
+                _LOGGER.info(
+                    "✓ Données Tempo récupérées: J=%s (%s), J+1=%s (%s)",
+                    self.get_color_name(today),
+                    self.get_color_code(today),
+                    self.get_color_name(tomorrow),
+                    self.get_color_code(tomorrow)
+                )
+            else:
+                _LOGGER.warning("[API] Données invalides, conservation du cache")
+                return self._cached_data
 
-                        new_data = data.get("values", {})
-
-                        # Diagnostic détaillé si données vides
-                        if not new_data:
-                            _LOGGER.warning(f"[API] Clé 'values' vide ou absente")
-                            _LOGGER.warning(f"[API] Structure complète: {data}")
-                        else:
-                            _LOGGER.debug(f"[API] Nombre d'entrées dans 'values': {len(new_data)}")
-                            # Afficher les 5 dernières dates pour vérifier
-                            sorted_dates = sorted(new_data.keys())[-5:]
-                            _LOGGER.debug(f"[API] 5 dernières dates: {dict((d, new_data[d]) for d in sorted_dates)}")
-
-                        # Valide et met en cache les données
-                        if self._validate_and_cache_data(new_data):
-                            self.tempo_data = new_data
-                            self._data_fetched_today = True
-
-                            today = self.get_tempo_date(0)
-                            tomorrow = self.get_tempo_date(1)
-
-                            _LOGGER.info(
-                                "✓ Données Tempo récupérées: J=%s (%s), J+1=%s (%s)",
-                                self.get_color_name(today),
-                                self.get_color_code(today),
-                                self.get_color_name(tomorrow),
-                                self.get_color_code(tomorrow)
-                            )
-                        else:
-                            _LOGGER.warning("[API] Données invalides, conservation du cache")
-                            return self._cached_data
-
-                        return self.tempo_data
+            return self.tempo_data
 
         except asyncio.TimeoutError:
             _LOGGER.error("[API] Timeout (15s) lors de la récupération des données")
